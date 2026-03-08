@@ -1,6 +1,5 @@
 import {
   AppWindow,
-  Bell,
   Gamepad2,
   Grid3X3,
   HelpCircle,
@@ -8,7 +7,6 @@ import {
   Info,
   LogOut,
   Menu,
-  MessageCircle,
   Settings,
   ShoppingBag,
   Users,
@@ -26,8 +24,6 @@ export type Page =
   | "community"
   | "shop"
   | "support"
-  | "friends"
-  | "messages"
   | "settings";
 
 interface NavBarProps {
@@ -131,28 +127,6 @@ export function NavBar({
 
         {/* Right side actions */}
         <div className="flex items-center gap-2 ml-auto">
-          {/* Friends icon */}
-          <button
-            type="button"
-            onClick={() => onNavigate("friends")}
-            className={`p-2 rounded-lg transition-all ${currentPage === "friends" ? "bg-purple-600/30 text-purple-300" : "text-white/50 hover:text-white hover:bg-white/5"}`}
-            title="Friends"
-            data-ocid="nav.link"
-          >
-            <Bell className="w-5 h-5" />
-          </button>
-
-          {/* Messages icon */}
-          <button
-            type="button"
-            onClick={() => onNavigate("messages")}
-            className={`p-2 rounded-lg transition-all ${currentPage === "messages" ? "bg-purple-600/30 text-purple-300" : "text-white/50 hover:text-white hover:bg-white/5"}`}
-            title="Messages"
-            data-ocid="nav.link"
-          >
-            <MessageCircle className="w-5 h-5" />
-          </button>
-
           {/* Settings icon */}
           <button
             type="button"

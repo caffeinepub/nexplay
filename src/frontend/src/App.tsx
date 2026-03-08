@@ -9,10 +9,8 @@ import { AllGamesPage } from "./components/AllGamesPage";
 import { AppsPage } from "./components/AppsPage";
 import { AuthPage } from "./components/AuthPage";
 import { CommunityPage } from "./components/CommunityPage";
-import { FriendsPage } from "./components/FriendsPage";
 import { HomePage } from "./components/HomePage";
 import { InformationPage } from "./components/InformationPage";
-import { MessagesPage } from "./components/MessagesPage";
 import { NavBar, type Page } from "./components/NavBar";
 import { SettingsPage } from "./components/SettingsPage";
 import { ShopPage } from "./components/ShopPage";
@@ -150,10 +148,6 @@ export default function App() {
           />
         )}
         {currentPage === "support" && <SupportPage />}
-        {currentPage === "friends" && (
-          <FriendsPage onNavigate={handleNavigate} />
-        )}
-        {currentPage === "messages" && <MessagesPage />}
         {currentPage === "settings" && (
           <SettingsPage
             profile={profile}
