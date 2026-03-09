@@ -2,107 +2,215 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Gamepad2, Loader2, Shield } from "lucide-react";
-import { useState } from "react";
-import { OnlineStatus, type UserProfile, UserTier } from "../backend.d";
+import { Eye, EyeOff, Gamepad2, Loader2, Lock, Mail, User } from "lucide-react";
+import { useEffect, useState } from "react";
+import { OnlineStatus, UserTier } from "../backend.d";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 
+const LS_USERS_KEY = "nexplay_users";
+const LS_PENDING_KEY = "nexplay_pending_registration";
+
+interface StoredUser {
+  username: string;
+  email: string;
+  password: string;
+}
+
+interface PendingRegistration {
+  username: string;
+  email: string;
+}
+
+function getStoredUsers(): StoredUser[] {
+  try {
+    const raw = localStorage.getItem(LS_USERS_KEY);
+    return raw ? (JSON.parse(raw) as StoredUser[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredUsers(users: StoredUser[]) {
+  localStorage.setItem(LS_USERS_KEY, JSON.stringify(users));
+}
+
+function getPendingRegistration(): PendingRegistration | null {
+  try {
+    const raw = localStorage.getItem(LS_PENDING_KEY);
+    return raw ? (JSON.parse(raw) as PendingRegistration) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingRegistration() {
+  localStorage.removeItem(LS_PENDING_KEY);
+}
+
 const ALLOWED_DOMAINS = ["gmail.com", "comptonusd.net"];
 
-function validateEmail(email: string): string | null {
-  const domain = email.split("@")[1]?.toLowerCase();
-  if (!domain) return "Please enter a valid email address.";
-  if (!ALLOWED_DOMAINS.includes(domain)) {
-    return "Access restricted. Please sign in with a Gmail or Compton USD account to play games.";
-  }
-  return null;
+function isValidEmailDomain(email: string): boolean {
+  const parts = email.toLowerCase().split("@");
+  if (parts.length !== 2) return false;
+  return ALLOWED_DOMAINS.includes(parts[1]);
 }
 
 export function AuthPage() {
-  const { login, isLoggingIn } = useInternetIdentity();
-  const { actor } = useActor();
+  const { login, isLoggingIn, isLoginSuccess, identity } =
+    useInternetIdentity();
+  const { actor, isFetching } = useActor();
 
   // Login state
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [isLoggingInLocal, setIsLoggingInLocal] = useState(false);
 
-  // Signup state
-  const [signupUsername, setSignupUsername] = useState("");
-  const [signupEmail, setSignupEmail] = useState("");
-  const [signupPassword, setSignupPassword] = useState("");
-  const [signupConfirm, setSignupConfirm] = useState("");
-  const [signupError, setSignupError] = useState("");
-  const [signupSuccess, setSignupSuccess] = useState(false);
-  const [isSigningUp, setIsSigningUp] = useState(false);
+  // Register state
+  const [registerUsername, setRegisterUsername] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
+  const [registerError, setRegisterError] = useState("");
+  const [registerSuccess, setRegisterSuccess] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  // After Internet Identity login completes, save profile if there's a pending registration
+  useEffect(() => {
+    if (!isLoginSuccess || !identity || !actor || isFetching) return;
+
+    const pending = getPendingRegistration();
+    if (!pending) return;
+
+    clearPendingRegistration();
+
+    actor
+      .saveCallerUserProfile({
+        username: pending.username,
+        displayName: pending.username,
+        email: pending.email,
+        profileIcon: "🎮",
+        status: OnlineStatus.online,
+        tier: UserTier.free,
+        joinDate: BigInt(Date.now() * 1_000_000),
+      })
+      .then(() => {
+        setRegisterSuccess(true);
+        setIsRegistering(false);
+      })
+      .catch(() => {
+        setRegisterError(
+          "Account created but profile save failed. Please try again.",
+        );
+        setIsRegistering(false);
+      });
+  }, [isLoginSuccess, identity, actor, isFetching]);
+
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
-    const emailErr = validateEmail(loginEmail);
-    if (emailErr) {
-      setLoginError(emailErr);
+
+    if (!loginEmail.trim() || !loginPassword.trim()) {
+      setLoginError("Please enter your email and password.");
       return;
     }
-    if (!loginPassword) {
-      setLoginError("Please enter your password.");
+
+    const users = getStoredUsers();
+    const found = users.find(
+      (u) =>
+        u.email.toLowerCase() === loginEmail.toLowerCase() &&
+        u.password === loginPassword,
+    );
+
+    if (!found) {
+      setLoginError(
+        "Invalid email or password. Please check your credentials.",
+      );
       return;
     }
-    await login();
+
+    setIsLoggingInLocal(true);
+    login();
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
+  const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
-    setSignupError("");
+    setRegisterError("");
 
-    if (!signupUsername.trim()) {
-      setSignupError("Username is required.");
+    // Username validation
+    const username = registerUsername.trim();
+    if (!username) {
+      setRegisterError("Username is required.");
       return;
     }
-    if (signupUsername.length < 3) {
-      setSignupError("Username must be at least 3 characters.");
+    if (username.length < 3) {
+      setRegisterError("Username must be at least 3 characters.");
       return;
     }
-
-    const emailErr = validateEmail(signupEmail);
-    if (emailErr) {
-      setSignupError(emailErr);
+    if (username.length > 20) {
+      setRegisterError("Username must be 20 characters or less.");
       return;
     }
-
-    if (signupPassword.length < 6) {
-      setSignupError("Password must be at least 6 characters.");
-      return;
-    }
-
-    if (signupPassword !== signupConfirm) {
-      setSignupError("Passwords do not match.");
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      setRegisterError(
+        "Username can only contain letters, numbers, and underscores.",
+      );
       return;
     }
 
-    setIsSigningUp(true);
-    try {
-      await login();
-      if (actor) {
-        const profile: UserProfile = {
-          username: signupUsername.trim(),
-          displayName: signupUsername.trim(),
-          email: signupEmail.toLowerCase(),
-          profileIcon: "🎮",
-          status: OnlineStatus.online,
-          tier: UserTier.free,
-          joinDate: BigInt(Date.now() * 1_000_000),
-        };
-        await actor.saveCallerUserProfile(profile);
-        setSignupSuccess(true);
-      }
-    } catch (_err) {
-      setSignupError("Failed to create account. Please try again.");
-    } finally {
-      setIsSigningUp(false);
+    // Email validation
+    const email = registerEmail.trim();
+    if (!email) {
+      setRegisterError("Email is required.");
+      return;
     }
+    if (!isValidEmailDomain(email)) {
+      setRegisterError(
+        "Access restricted. Please sign in with a Gmail or Compton USD account to play games.",
+      );
+      return;
+    }
+
+    // Password validation
+    if (!registerPassword) {
+      setRegisterError("Password is required.");
+      return;
+    }
+    if (registerPassword.length < 8) {
+      setRegisterError("Password must be at least 8 characters.");
+      return;
+    }
+    if (registerPassword !== registerConfirmPassword) {
+      setRegisterError("Passwords do not match.");
+      return;
+    }
+
+    // Duplicate email check
+    const users = getStoredUsers();
+    const emailTaken = users.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase(),
+    );
+    if (emailTaken) {
+      setRegisterError("An account with this email already exists.");
+      return;
+    }
+
+    // Save user to localStorage
+    const updated = [...users, { username, email, password: registerPassword }];
+    saveStoredUsers(updated);
+
+    // Store pending registration so the useEffect can complete profile creation after II login
+    localStorage.setItem(LS_PENDING_KEY, JSON.stringify({ username, email }));
+
+    setIsRegistering(true);
+    login();
   };
+
+  const isBusy = isLoggingIn || isLoggingInLocal || isRegistering;
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
@@ -149,14 +257,14 @@ export function AuthPage() {
               <TabsTrigger
                 value="login"
                 className="flex-1 data-[state=active]:bg-purple-600/40 data-[state=active]:text-white"
-                data-ocid="auth.tab"
+                data-ocid="auth.login.tab"
               >
                 Sign In
               </TabsTrigger>
               <TabsTrigger
-                value="signup"
+                value="register"
                 className="flex-1 data-[state=active]:bg-purple-600/40 data-[state=active]:text-white"
-                data-ocid="auth.tab"
+                data-ocid="auth.register.tab"
               >
                 Create Account
               </TabsTrigger>
@@ -164,177 +272,289 @@ export function AuthPage() {
 
             {/* Login Tab */}
             <TabsContent value="login">
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
+              <form onSubmit={handleLogin} className="space-y-4" noValidate>
+                {/* Email */}
+                <div className="space-y-1.5">
                   <Label
                     htmlFor="login-email"
                     className="text-purple-200 text-sm"
                   >
-                    Email Address
+                    Email
                   </Label>
-                  <Input
-                    id="login-email"
-                    type="email"
-                    placeholder="yourname@gmail.com"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    className="bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                    data-ocid="auth.input"
-                  />
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/60 pointer-events-none" />
+                    <Input
+                      id="login-email"
+                      type="email"
+                      placeholder="you@gmail.com"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      className="pl-9 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
+                      data-ocid="auth.login.input"
+                      autoComplete="email"
+                      disabled={isBusy}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
+
+                {/* Password */}
+                <div className="space-y-1.5">
                   <Label
                     htmlFor="login-password"
                     className="text-purple-200 text-sm"
                   >
                     Password
                   </Label>
-                  <Input
-                    id="login-password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    className="bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                    data-ocid="auth.input"
-                  />
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/60 pointer-events-none" />
+                    <Input
+                      id="login-password"
+                      type={showLoginPassword ? "text" : "password"}
+                      placeholder="Your password"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      className="pl-9 pr-10 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
+                      data-ocid="auth.login.input"
+                      autoComplete="current-password"
+                      disabled={isBusy}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPassword((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400/60 hover:text-purple-300 transition-colors"
+                      tabIndex={-1}
+                      aria-label={
+                        showLoginPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showLoginPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {loginError && (
                   <div
-                    className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-300 text-sm"
-                    data-ocid="auth.error_state"
+                    className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-300 text-sm flex items-start gap-2"
+                    data-ocid="auth.login.error_state"
+                    role="alert"
                   >
-                    <Shield className="inline w-4 h-4 mr-1" />
-                    {loginError}
+                    <span className="mt-0.5">⚠</span>
+                    <span>{loginError}</span>
                   </div>
                 )}
 
                 <Button
                   type="submit"
-                  disabled={isLoggingIn}
+                  disabled={isBusy}
                   className="w-full neon-btn text-white font-semibold py-2.5"
-                  data-ocid="auth.submit_button"
+                  data-ocid="auth.login.submit_button"
                 >
-                  {isLoggingIn ? (
+                  {isBusy ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Connecting...
+                      Signing In...
                     </>
                   ) : (
-                    "Sign In with Internet Identity"
+                    "Sign In"
                   )}
                 </Button>
 
-                <p className="text-white/30 text-xs text-center mt-2">
-                  Only @gmail.com and @comptonusd.net accounts allowed
+                <p className="text-white/30 text-xs text-center">
+                  New here?{" "}
+                  <span className="text-purple-400/70">
+                    Switch to Create Account
+                  </span>{" "}
+                  to get started.
                 </p>
               </form>
             </TabsContent>
 
-            {/* Signup Tab */}
-            <TabsContent value="signup">
-              {signupSuccess ? (
+            {/* Register Tab */}
+            <TabsContent value="register">
+              {registerSuccess ? (
                 <div
                   className="text-center py-8"
-                  data-ocid="auth.success_state"
+                  data-ocid="auth.register.success_state"
                 >
-                  <div className="text-4xl mb-4">🎮</div>
-                  <h3 className="text-white font-bold text-lg mb-2">
+                  <div className="text-5xl mb-4">🎮</div>
+                  <h3 className="text-white font-bold text-xl mb-2">
                     Welcome to NexPlay!
                   </h3>
-                  <p className="text-purple-300/70 text-sm">
-                    Your account has been created. Refresh to start playing!
+                  <p className="text-purple-300/70 text-sm mb-6">
+                    Your account has been created. Ready to play!
                   </p>
+                  <Button
+                    onClick={() => window.location.reload()}
+                    className="neon-btn text-white px-8"
+                  >
+                    Start Playing
+                  </Button>
                 </div>
               ) : (
-                <form onSubmit={handleSignup} className="space-y-4">
-                  <div className="space-y-2">
+                <form
+                  onSubmit={handleRegister}
+                  className="space-y-4"
+                  noValidate
+                >
+                  {/* Username */}
+                  <div className="space-y-1.5">
                     <Label
-                      htmlFor="signup-username"
+                      htmlFor="register-username"
                       className="text-purple-200 text-sm"
                     >
                       Username
                     </Label>
-                    <Input
-                      id="signup-username"
-                      type="text"
-                      placeholder="GameMaster99"
-                      value={signupUsername}
-                      onChange={(e) => setSignupUsername(e.target.value)}
-                      className="bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                      data-ocid="auth.input"
-                    />
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/60 pointer-events-none" />
+                      <Input
+                        id="register-username"
+                        type="text"
+                        placeholder="GameMaster99"
+                        value={registerUsername}
+                        onChange={(e) => setRegisterUsername(e.target.value)}
+                        className="pl-9 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
+                        data-ocid="auth.register.input"
+                        maxLength={20}
+                        autoComplete="username"
+                        disabled={isBusy}
+                      />
+                    </div>
+                    <p className="text-white/30 text-xs">
+                      Letters, numbers, and underscores only. 3–20 characters.
+                    </p>
                   </div>
-                  <div className="space-y-2">
+
+                  {/* Email */}
+                  <div className="space-y-1.5">
                     <Label
-                      htmlFor="signup-email"
+                      htmlFor="register-email"
                       className="text-purple-200 text-sm"
                     >
-                      Email Address
+                      Email
                     </Label>
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      placeholder="yourname@gmail.com"
-                      value={signupEmail}
-                      onChange={(e) => setSignupEmail(e.target.value)}
-                      className="bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                      data-ocid="auth.input"
-                    />
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/60 pointer-events-none" />
+                      <Input
+                        id="register-email"
+                        type="email"
+                        placeholder="you@gmail.com"
+                        value={registerEmail}
+                        onChange={(e) => setRegisterEmail(e.target.value)}
+                        className="pl-9 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
+                        data-ocid="auth.register.input"
+                        autoComplete="email"
+                        disabled={isBusy}
+                      />
+                    </div>
+                    <p className="text-white/30 text-xs">
+                      Must be a @gmail.com or @comptonusd.net address.
+                    </p>
                   </div>
-                  <div className="space-y-2">
+
+                  {/* Password */}
+                  <div className="space-y-1.5">
                     <Label
-                      htmlFor="signup-password"
+                      htmlFor="register-password"
                       className="text-purple-200 text-sm"
                     >
                       Password
                     </Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={signupPassword}
-                      onChange={(e) => setSignupPassword(e.target.value)}
-                      className="bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                      data-ocid="auth.input"
-                    />
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/60 pointer-events-none" />
+                      <Input
+                        id="register-password"
+                        type={showRegPassword ? "text" : "password"}
+                        placeholder="Min 8 characters"
+                        value={registerPassword}
+                        onChange={(e) => setRegisterPassword(e.target.value)}
+                        className="pl-9 pr-10 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
+                        data-ocid="auth.register.input"
+                        autoComplete="new-password"
+                        disabled={isBusy}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegPassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400/60 hover:text-purple-300 transition-colors"
+                        tabIndex={-1}
+                        aria-label={
+                          showRegPassword ? "Hide password" : "Show password"
+                        }
+                      >
+                        {showRegPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
-                  <div className="space-y-2">
+
+                  {/* Confirm Password */}
+                  <div className="space-y-1.5">
                     <Label
-                      htmlFor="signup-confirm"
+                      htmlFor="register-confirm-password"
                       className="text-purple-200 text-sm"
                     >
                       Confirm Password
                     </Label>
-                    <Input
-                      id="signup-confirm"
-                      type="password"
-                      placeholder="••••••••"
-                      value={signupConfirm}
-                      onChange={(e) => setSignupConfirm(e.target.value)}
-                      className="bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                      data-ocid="auth.input"
-                    />
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/60 pointer-events-none" />
+                      <Input
+                        id="register-confirm-password"
+                        type={showRegConfirmPassword ? "text" : "password"}
+                        placeholder="Repeat password"
+                        value={registerConfirmPassword}
+                        onChange={(e) =>
+                          setRegisterConfirmPassword(e.target.value)
+                        }
+                        className="pl-9 pr-10 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
+                        data-ocid="auth.register.input"
+                        autoComplete="new-password"
+                        disabled={isBusy}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegConfirmPassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400/60 hover:text-purple-300 transition-colors"
+                        tabIndex={-1}
+                        aria-label={
+                          showRegConfirmPassword
+                            ? "Hide confirm password"
+                            : "Show confirm password"
+                        }
+                      >
+                        {showRegConfirmPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
-                  {signupError && (
+                  {registerError && (
                     <div
-                      className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-300 text-sm"
-                      data-ocid="auth.error_state"
+                      className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-300 text-sm flex items-start gap-2"
+                      data-ocid="auth.register.error_state"
+                      role="alert"
                     >
-                      <Shield className="inline w-4 h-4 mr-1" />
-                      {signupError}
+                      <span className="mt-0.5">⚠</span>
+                      <span>{registerError}</span>
                     </div>
                   )}
 
                   <Button
                     type="submit"
-                    disabled={isSigningUp || isLoggingIn}
+                    disabled={isBusy}
                     className="w-full neon-btn text-white font-semibold py-2.5"
-                    data-ocid="auth.submit_button"
+                    data-ocid="auth.register.submit_button"
                   >
-                    {isSigningUp || isLoggingIn ? (
+                    {isBusy ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Creating Account...
@@ -344,8 +564,9 @@ export function AuthPage() {
                     )}
                   </Button>
 
-                  <p className="text-white/30 text-xs text-center mt-2">
-                    Only @gmail.com and @comptonusd.net accounts allowed
+                  <p className="text-white/30 text-xs text-center">
+                    You&apos;ll verify your identity securely via Internet
+                    Identity.
                   </p>
                 </form>
               )}
@@ -353,9 +574,22 @@ export function AuthPage() {
           </Tabs>
         </div>
 
+        {/* Domain restriction notice */}
+        <div className="mt-4 glass-card rounded-xl p-3 text-center">
+          <p className="text-purple-300/60 text-xs">
+            🔒 Restricted to{" "}
+            <span className="text-purple-300/90 font-medium">@gmail.com</span>{" "}
+            and{" "}
+            <span className="text-purple-300/90 font-medium">
+              @comptonusd.net
+            </span>{" "}
+            accounts only.
+          </p>
+        </div>
+
         {/* Footer */}
-        <p className="text-center text-white/20 text-xs mt-6">
-          © {new Date().getFullYear()}. Built with love using{" "}
+        <p className="text-center text-white/20 text-xs mt-4">
+          © {new Date().getFullYear()}. Built with ♥ using{" "}
           <a
             href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
             target="_blank"
