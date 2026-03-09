@@ -586,19 +586,6 @@ export function AuthPage() {
             accounts only.
           </p>
         </div>
-
-        {/* Footer */}
-        <p className="text-center text-white/20 text-xs mt-4">
-          © {new Date().getFullYear()}. Built with ♥ using{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-purple-400/50 hover:text-purple-400 transition-colors"
-          >
-            caffeine.ai
-          </a>
-        </p>
       </div>
     </div>
   );

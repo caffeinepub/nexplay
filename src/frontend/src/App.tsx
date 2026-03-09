@@ -156,25 +156,6 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer */}
-      <footer
-        className="border-t border-white/5 py-4 px-6 text-center"
-        style={{ background: "rgba(8,8,24,0.6)" }}
-      >
-        <p className="text-white/20 text-xs">
-          © {new Date().getFullYear()}. Built with{" "}
-          <span className="text-red-400/60">♥</span> using{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-purple-400/50 hover:text-purple-400 transition-colors"
-          >
-            caffeine.ai
-          </a>
-        </p>
-      </footer>
-
       <Toaster />
     </div>
   );
