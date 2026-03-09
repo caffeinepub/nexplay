@@ -21,6 +21,7 @@ export default function App() {
   const { actor, isFetching } = useActor();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [currentPage, setCurrentPage] = useState<Page>("home");
 
   const loadProfile = useCallback(async () => {
@@ -28,23 +29,30 @@ export default function App() {
     setProfileLoading(true);
     try {
       const p = await actor.getCallerUserProfile();
-      setProfile(p);
+      setProfile(p ?? null);
     } catch {
+      // If profile load fails, treat as no profile (show auth page)
       setProfile(null);
     } finally {
       setProfileLoading(false);
+      setProfileLoaded(true);
     }
   }, [actor, identity]);
 
   useEffect(() => {
     if (actor && identity && !isFetching) {
       loadProfile();
+    } else if (!identity) {
+      // Reset profile state when logged out
+      setProfile(null);
+      setProfileLoaded(false);
     }
   }, [actor, identity, isFetching, loadProfile]);
 
   const handleLogout = () => {
     clear();
     setProfile(null);
+    setProfileLoaded(false);
     setCurrentPage("home");
   };
 
@@ -87,18 +95,18 @@ export default function App() {
     );
   }
 
-  // Not logged in
+  // Not logged in - show auth page
   if (!identity) {
     return (
       <>
-        <AuthPage />
+        <AuthPage onProfileSaved={() => loadProfile()} />
         <Toaster />
       </>
     );
   }
 
-  // Profile loading
-  if (profileLoading) {
+  // Profile loading (only show if we haven't loaded yet)
+  if (profileLoading && !profileLoaded) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <div className="flex items-center gap-2">
@@ -114,11 +122,11 @@ export default function App() {
     );
   }
 
-  // If logged in but no profile, show auth page to complete signup
+  // Logged in but no profile yet - show auth page to complete signup
   if (!profile) {
     return (
       <>
-        <AuthPage />
+        <AuthPage onProfileSaved={() => loadProfile()} />
         <Toaster />
       </>
     );

@@ -180,8 +180,9 @@ actor {
   // USER MANAGEMENT
 
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can save profiles");
+    // Allow any authenticated (non-anonymous) caller to save their profile
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot save profiles");
     };
     if (not validateEmail(profile.email)) {
       Runtime.trap("Invalid email domain. Only @gmail.com and @comptonusd.net are allowed");
@@ -190,8 +191,8 @@ actor {
   };
 
   public shared ({ caller }) func editCallerUserProfile(profile : UserProfile) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can edit profiles");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot edit profiles");
     };
     if (not validateEmail(profile.email)) {
       Runtime.trap("Invalid email domain. Only @gmail.com and @comptonusd.net are allowed");
@@ -200,13 +201,15 @@ actor {
   };
 
   public shared ({ caller }) func removeCallerUserProfile() : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can delete profiles");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot delete profiles");
     };
     users.remove(caller);
   };
 
+  // Safe query - returns null for anonymous or unregistered users without trapping
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
+    if (caller.isAnonymous()) { return null };
     users.get(caller);
   };
 
@@ -220,15 +223,15 @@ actor {
   // USER TIER MANAGEMENT
 
   public shared ({ caller }) func upgradeToPro() : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can upgrade tier");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot upgrade tier");
     };
     userTiers.add(caller, #pro);
   };
 
   public shared ({ caller }) func upgradeToAdmin() : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can upgrade tier");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot upgrade tier");
     };
     userTiers.add(caller, #admin);
   };
@@ -255,8 +258,8 @@ actor {
   public type FavoriteData = Set.Set<GameId>;
 
   public shared ({ caller }) func addFavorite(gameId : GameId) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can add favorites");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot add favorites");
     };
     var userFavorites = switch (favorites.get(caller)) {
       case (null) { Set.empty<GameId>() };
@@ -267,8 +270,8 @@ actor {
   };
 
   public shared ({ caller }) func removeFavorite(gameId : GameId) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can remove favorites");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot remove favorites");
     };
     switch (favorites.get(caller)) {
       case (null) { Runtime.trap("No favorites found for this user") };
@@ -282,6 +285,7 @@ actor {
   };
 
   public query ({ caller }) func getCallerFavorites() : async [GameId] {
+    if (caller.isAnonymous()) { return [] };
     switch (favorites.get(caller)) {
       case (null) { [] };
       case (?list) { list.values().toArray() };
@@ -308,8 +312,8 @@ actor {
   public type RecentGamesRecord = List.List<GamePlayRecord>;
 
   public shared ({ caller }) func recordGamePlay(gameId : GameId) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can record game play");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot record game play");
     };
     var history = switch (recentlyPlayed.get(caller)) {
       case (null) { List.empty<GamePlayRecord>() };
@@ -327,6 +331,7 @@ actor {
   };
 
   public query ({ caller }) func getCallerRecentlyPlayed() : async [GamePlayRecord] {
+    if (caller.isAnonymous()) { return [] };
     switch (recentlyPlayed.get(caller)) {
       case (null) { [] };
       case (?records) { records.toArray() };
@@ -346,8 +351,8 @@ actor {
   // FRIEND REQUESTS
 
   public shared ({ caller }) func sendFriendRequest(toUsername : Text) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can send friend requests");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot send friend requests");
     };
 
     var toPrincipal : ?Principal = null;
@@ -377,8 +382,8 @@ actor {
   };
 
   public shared ({ caller }) func acceptFriendRequest(from : Principal) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can accept friend requests");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot accept friend requests");
     };
 
     let key = getFriendRequestKey(from, caller);
@@ -400,8 +405,8 @@ actor {
   };
 
   public shared ({ caller }) func declineFriendRequest(from : Principal) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can decline friend requests");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot decline friend requests");
     };
 
     let key = getFriendRequestKey(from, caller);
@@ -423,9 +428,7 @@ actor {
   };
 
   public query ({ caller }) func getPendingFriendRequests() : async [FriendRequest] {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view friend requests");
-    };
+    if (caller.isAnonymous()) { return [] };
     friendRequests.values().toArray().filter(
       func(request) {
         request.to == caller and request.status == #pending
@@ -434,9 +437,7 @@ actor {
   };
 
   public query ({ caller }) func getFriends() : async [FriendRequest] {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view friends");
-    };
+    if (caller.isAnonymous()) { return [] };
     friendRequests.values().toArray().filter(
       func(request) {
         (request.from == caller or request.to == caller) and request.status == #accepted
@@ -447,8 +448,8 @@ actor {
   // MESSAGES
 
   public shared ({ caller }) func sendMessage(to : Principal, content : Text) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can send messages");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot send messages");
     };
 
     if (not areFriends(caller, to)) {
@@ -477,9 +478,7 @@ actor {
   };
 
   public query ({ caller }) func getConversation(otherUser : Principal) : async [Message] {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view messages");
-    };
+    if (caller.isAnonymous()) { return [] };
 
     if (not areFriends(caller, otherUser)) {
       Runtime.trap("Unauthorized: Can only view conversations with friends");
@@ -495,8 +494,8 @@ actor {
   // GAME REPORTS
 
   public shared ({ caller }) func submitGameReport(gameId : ?Nat, description : Text) : async Nat {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can submit game reports");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot submit game reports");
     };
 
     let reportId = gameReportCounter;
@@ -516,14 +515,14 @@ actor {
   };
 
   public query ({ caller }) func getGameReports() : async [GameReport] {
-    if (not AccessControl.hasPermission(accessControlState, caller, #admin)) {
+    if (not AccessControl.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Only admins can view game reports");
     };
     gameReports.values().toArray();
   };
 
   public shared ({ caller }) func updateGameReportStatus(reportId : Nat, status : ReportStatus) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #admin)) {
+    if (not AccessControl.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Only admins can update report status");
     };
 
@@ -546,8 +545,8 @@ actor {
   // SUPPORT TICKETS
 
   public shared ({ caller }) func submitSupportTicket(subject : Text, description : Text, category : TicketCategory) : async Nat {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can submit support tickets");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot submit support tickets");
     };
 
     let ticketId = supportTicketCounter;
@@ -568,9 +567,7 @@ actor {
   };
 
   public query ({ caller }) func getMySupportTickets() : async [SupportTicket] {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view support tickets");
-    };
+    if (caller.isAnonymous()) { return [] };
     supportTickets.values().toArray().filter(
       func(ticket) {
         ticket.submittedBy == caller
@@ -579,14 +576,14 @@ actor {
   };
 
   public query ({ caller }) func getAllSupportTickets() : async [SupportTicket] {
-    if (not AccessControl.hasPermission(accessControlState, caller, #admin)) {
+    if (not AccessControl.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Only admins can view all support tickets");
     };
     supportTickets.values().toArray();
   };
 
   public shared ({ caller }) func updateSupportTicketStatus(ticketId : Nat, status : TicketStatus) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #admin)) {
+    if (not AccessControl.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Only admins can update ticket status");
     };
 
@@ -610,7 +607,7 @@ actor {
   // ADMIN QUIZ
 
   public shared ({ caller }) func addQuizQuestion(question : Text, options : [Text], correctAnswerIndex : Nat) : async () {
-    if (not AccessControl.hasPermission(accessControlState, caller, #admin)) {
+    if (not AccessControl.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Only admins can add quiz questions");
     };
 
@@ -634,9 +631,7 @@ actor {
   };
 
   public query ({ caller }) func getQuizQuestions() : async [{ id : Nat; question : Text; options : [Text] }] {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can view quiz questions");
-    };
+    if (caller.isAnonymous()) { return [] };
 
     quizQuestions.values().toArray().map(
       func(q : QuizQuestion) : { id : Nat; question : Text; options : [Text] } {
@@ -646,8 +641,8 @@ actor {
   };
 
   public shared ({ caller }) func submitQuiz(answers : [Nat]) : async QuizSubmission {
-    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
-      Runtime.trap("Unauthorized: Only users can submit quiz");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Anonymous users cannot submit quiz");
     };
 
     if (answers.size() != 200) {

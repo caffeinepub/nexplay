@@ -56,7 +56,11 @@ function isValidEmailDomain(email: string): boolean {
   return ALLOWED_DOMAINS.includes(parts[1]);
 }
 
-export function AuthPage() {
+interface AuthPageProps {
+  onProfileSaved?: () => void;
+}
+
+export function AuthPage({ onProfileSaved }: AuthPageProps) {
   const { login, isLoggingIn, isLoginSuccess, identity } =
     useInternetIdentity();
   const { actor, isFetching } = useActor();
@@ -79,12 +83,22 @@ export function AuthPage() {
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
 
+  // Forgot password state
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotMessage, setForgotMessage] = useState("");
+
   // After Internet Identity login completes, save profile if there's a pending registration
   useEffect(() => {
     if (!isLoginSuccess || !identity || !actor || isFetching) return;
 
     const pending = getPendingRegistration();
-    if (!pending) return;
+    if (!pending) {
+      // No pending registration — user is logging into existing account
+      // Notify parent to reload profile
+      if (onProfileSaved) onProfileSaved();
+      return;
+    }
 
     clearPendingRegistration();
 
@@ -101,14 +115,17 @@ export function AuthPage() {
       .then(() => {
         setRegisterSuccess(true);
         setIsRegistering(false);
+        if (onProfileSaved) onProfileSaved();
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        const message =
+          err instanceof Error ? err.message : "Unknown error occurred";
         setRegisterError(
-          "Account created but profile save failed. Please try again.",
+          `Account created but profile save failed: ${message}. Please try again.`,
         );
         setIsRegistering(false);
       });
-  }, [isLoginSuccess, identity, actor, isFetching]);
+  }, [isLoginSuccess, identity, actor, isFetching, onProfileSaved]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,7 +227,138 @@ export function AuthPage() {
     login();
   };
 
+  const handleForgotPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotMessage("");
+
+    const email = forgotEmail.trim();
+    if (!email) {
+      setForgotMessage("Please enter your email address.");
+      return;
+    }
+
+    const users = getStoredUsers();
+    const found = users.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase(),
+    );
+
+    if (!found) {
+      // Don't reveal if email exists for security
+      setForgotMessage(
+        "If an account with that email exists, your password info has been noted. Since this is a demo, passwords are stored locally -- check your browser's localStorage or contact support.",
+      );
+    } else {
+      setForgotMessage(
+        `Account found! Your password hint: your password is ${found.password.length} characters long. For a full reset, please re-register with the same email.`,
+      );
+    }
+  };
+
   const isBusy = isLoggingIn || isLoggingInLocal || isRegistering;
+
+  if (showForgotPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
+        {/* Animated background */}
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#080818] via-[#0d0820] to-[#110828]" />
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-900/20 rounded-full blur-3xl animate-pulse" />
+          <div
+            className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-900/20 rounded-full blur-3xl animate-pulse"
+            style={{ animationDelay: "1s" }}
+          />
+        </div>
+        <div
+          className="absolute inset-0 opacity-5"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(167,139,250,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(167,139,250,0.3) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+          }}
+        />
+
+        <div className="relative z-10 w-full max-w-md px-4">
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Gamepad2
+                className="w-8 h-8 text-yellow-400"
+                style={{ filter: "drop-shadow(0 0 8px rgba(251,191,36,0.8))" }}
+              />
+              <span className="nexplay-logo text-4xl">NexPlay</span>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl p-6 shadow-2xl">
+            <h2 className="text-white font-bold text-xl mb-2">
+              Forgot Password
+            </h2>
+            <p className="text-purple-300/70 text-sm mb-6">
+              Enter your email address to recover your account.
+            </p>
+
+            <form
+              onSubmit={handleForgotPassword}
+              className="space-y-4"
+              noValidate
+            >
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="forgot-email"
+                  className="text-purple-200 text-sm"
+                >
+                  Email
+                </Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/60 pointer-events-none" />
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    placeholder="you@gmail.com"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="pl-9 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
+                    data-ocid="auth.forgot.input"
+                    autoComplete="email"
+                  />
+                </div>
+              </div>
+
+              {forgotMessage && (
+                <div
+                  className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-blue-200 text-sm"
+                  data-ocid="auth.forgot.success_state"
+                >
+                  {forgotMessage}
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full neon-btn text-white font-semibold py-2.5"
+                data-ocid="auth.forgot.submit_button"
+              >
+                Recover Account
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setForgotEmail("");
+                  setForgotMessage("");
+                }}
+                className="w-full text-purple-400/70 hover:text-purple-300"
+                data-ocid="auth.forgot.cancel_button"
+              >
+                Back to Sign In
+              </Button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
@@ -290,7 +438,7 @@ export function AuthPage() {
                       value={loginEmail}
                       onChange={(e) => setLoginEmail(e.target.value)}
                       className="pl-9 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                      data-ocid="auth.login.input"
+                      data-ocid="auth.login.email_input"
                       autoComplete="email"
                       disabled={isBusy}
                     />
@@ -299,12 +447,22 @@ export function AuthPage() {
 
                 {/* Password */}
                 <div className="space-y-1.5">
-                  <Label
-                    htmlFor="login-password"
-                    className="text-purple-200 text-sm"
-                  >
-                    Password
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label
+                      htmlFor="login-password"
+                      className="text-purple-200 text-sm"
+                    >
+                      Password
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPassword(true)}
+                      className="text-purple-400/70 hover:text-purple-300 text-xs transition-colors"
+                      data-ocid="auth.login.forgot_button"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/60 pointer-events-none" />
                     <Input
@@ -314,7 +472,7 @@ export function AuthPage() {
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
                       className="pl-9 pr-10 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                      data-ocid="auth.login.input"
+                      data-ocid="auth.login.password_input"
                       autoComplete="current-password"
                       disabled={isBusy}
                     />
@@ -417,14 +575,14 @@ export function AuthPage() {
                         value={registerUsername}
                         onChange={(e) => setRegisterUsername(e.target.value)}
                         className="pl-9 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                        data-ocid="auth.register.input"
+                        data-ocid="auth.register.username_input"
                         maxLength={20}
                         autoComplete="username"
                         disabled={isBusy}
                       />
                     </div>
                     <p className="text-white/30 text-xs">
-                      Letters, numbers, and underscores only. 3–20 characters.
+                      Letters, numbers, and underscores only. 3-20 characters.
                     </p>
                   </div>
 
@@ -445,7 +603,7 @@ export function AuthPage() {
                         value={registerEmail}
                         onChange={(e) => setRegisterEmail(e.target.value)}
                         className="pl-9 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                        data-ocid="auth.register.input"
+                        data-ocid="auth.register.email_input"
                         autoComplete="email"
                         disabled={isBusy}
                       />
@@ -472,7 +630,7 @@ export function AuthPage() {
                         value={registerPassword}
                         onChange={(e) => setRegisterPassword(e.target.value)}
                         className="pl-9 pr-10 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                        data-ocid="auth.register.input"
+                        data-ocid="auth.register.password_input"
                         autoComplete="new-password"
                         disabled={isBusy}
                       />
@@ -513,7 +671,7 @@ export function AuthPage() {
                           setRegisterConfirmPassword(e.target.value)
                         }
                         className="pl-9 pr-10 bg-white/5 border-purple-500/30 text-white placeholder:text-white/30 focus:border-purple-400"
-                        data-ocid="auth.register.input"
+                        data-ocid="auth.register.confirm_input"
                         autoComplete="new-password"
                         disabled={isBusy}
                       />
@@ -577,7 +735,7 @@ export function AuthPage() {
         {/* Domain restriction notice */}
         <div className="mt-4 glass-card rounded-xl p-3 text-center">
           <p className="text-purple-300/60 text-xs">
-            🔒 Restricted to{" "}
+            Restricted to{" "}
             <span className="text-purple-300/90 font-medium">@gmail.com</span>{" "}
             and{" "}
             <span className="text-purple-300/90 font-medium">
